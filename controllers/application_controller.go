@@ -18,9 +18,11 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -41,6 +43,9 @@ type ApplicationReconciler struct {
 //+kubebuilder:rbac:groups=minetto.dev,resources=applications,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=minetto.dev,resources=applications/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=minetto.dev,resources=applications/finalizers,verbs=update
+// +kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=replicasets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -69,7 +74,7 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		controllerutil.AddFinalizer(&app, finalizer)
 		return ctrl.Result{}, r.Update(ctx, &app)
 	}
-	fmt.Println(app.DeletionTimestamp)
+
 	if !app.DeletionTimestamp.IsZero() {
 		// invocar função que faz o delete
 		l.Info("Application is being deleted")
@@ -77,13 +82,43 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 	// invocar função que faz o create
 	l.Info("Application is being created")
+	return r.reconcileCreate(ctx, &app)
+}
 
+func (r *ApplicationReconciler) reconcileCreate(ctx context.Context, app *minettodevv1alpha1.Application) (ctrl.Result, error) {
+	l := log.FromContext(ctx)
+	l.Info("Creating namespace")
+	ns := v1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: app.ObjectMeta.Name,
+		},
+	}
+	_, err := controllerutil.CreateOrPatch(ctx, r.Client, &ns, func() error {
+		return nil
+	})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	return ctrl.Result{}, nil
 }
 
 func (r *ApplicationReconciler) reconcileDelete(ctx context.Context, app *minettodevv1alpha1.Application) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
 	l.Info("remove all")
+
+	var ns v1.Namespace
+	nsName := types.NamespacedName{Name: app.ObjectMeta.Name}
+	if err := r.Get(ctx, nsName, &ns); err != nil {
+		if !apierrors.IsNotFound(err) {
+			l.Error(err, "unable to fetch Namespace")
+			return ctrl.Result{}, err
+		}
+	}
+	if err := r.Delete(ctx, &ns); err != nil {
+		l.Error(err, "unable to delete Namespace")
+		return ctrl.Result{}, err
+	}
+
 	controllerutil.RemoveFinalizer(app, finalizer)
 	return ctrl.Result{}, r.Update(ctx, app)
 }
