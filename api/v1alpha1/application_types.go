@@ -27,6 +27,7 @@ import (
 type ApplicationSpec struct {
 	Image    string `json:"image,omitempty"`
 	Replicas int32  `json:"replicas,omitempty"`
+	Port     int32  `json:"port,omitempty"`
 }
 
 // ApplicationStatus defines the observed state of Application

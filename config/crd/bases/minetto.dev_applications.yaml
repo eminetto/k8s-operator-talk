@@ -37,6 +37,9 @@ spec:
             properties:
               image:
                 type: string
+              port:
+                format: int32
+                type: integer
               replicas:
                 format: int32
                 type: integer

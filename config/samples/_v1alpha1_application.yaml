@@ -5,3 +5,4 @@ metadata:
 spec:
   image: eminetto/auth:latest
   replicas: 1
+  port: 80

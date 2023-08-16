@@ -18,11 +18,14 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -45,7 +48,7 @@ type ApplicationReconciler struct {
 //+kubebuilder:rbac:groups=minetto.dev,resources=applications/finalizers,verbs=update
 // +kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=apps,resources=replicasets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -88,6 +91,25 @@ func (r *ApplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 func (r *ApplicationReconciler) reconcileCreate(ctx context.Context, app *minettodevv1alpha1.Application) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
 	l.Info("Creating namespace")
+	err := r.createNamespace(ctx, app)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	l.Info("Creating deployment")
+	err = r.createDeployment(ctx, app)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	l.Info("Creating service")
+	err = r.createService(ctx, app)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *ApplicationReconciler) createNamespace(ctx context.Context, app *minettodevv1alpha1.Application) error {
 	ns := v1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: app.ObjectMeta.Name,
@@ -97,30 +119,142 @@ func (r *ApplicationReconciler) reconcileCreate(ctx context.Context, app *minett
 		return nil
 	})
 	if err != nil {
-		return ctrl.Result{}, err
+		return fmt.Errorf("unable to create Namespace: %v", err)
 	}
-	return ctrl.Result{}, nil
+	return nil
+}
+
+func (r *ApplicationReconciler) createDeployment(ctx context.Context, app *minettodevv1alpha1.Application) error {
+	depl := appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        app.ObjectMeta.Name + "-deployment",
+			Namespace:   app.ObjectMeta.Name,
+			Labels:      map[string]string{"label": app.ObjectMeta.Name, "app": app.ObjectMeta.Name},
+			Annotations: map[string]string{"imageregistry": "https://hub.docker.com/"},
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &app.Spec.Replicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"label": app.ObjectMeta.Name},
+			},
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"label": app.ObjectMeta.Name, "app": app.ObjectMeta.Name},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  app.ObjectMeta.Name + "-container",
+							Image: app.Spec.Image,
+							Ports: []v1.ContainerPort{
+								{
+									ContainerPort: app.Spec.Port,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	_, err := controllerutil.CreateOrPatch(ctx, r.Client, &depl, func() error {
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("unable to create Deployment: %v", err)
+	}
+	return nil
+}
+
+func (r *ApplicationReconciler) createService(ctx context.Context, app *minettodevv1alpha1.Application) error {
+	srv := v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      app.ObjectMeta.Name + "-service",
+			Namespace: app.ObjectMeta.Name,
+			Labels:    map[string]string{"app": app.ObjectMeta.Name},
+		},
+		Spec: v1.ServiceSpec{
+			Type:                  v1.ServiceTypeNodePort,
+			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyTypeLocal,
+			Selector:              map[string]string{"app": app.ObjectMeta.Name},
+			Ports: []v1.ServicePort{
+				{
+					Name:       "http",
+					Port:       app.Spec.Port,
+					Protocol:   v1.ProtocolTCP,
+					TargetPort: intstr.FromInt(int(app.Spec.Port)),
+				},
+			},
+		},
+		Status: v1.ServiceStatus{},
+	}
+	_, err := controllerutil.CreateOrPatch(ctx, r.Client, &srv, func() error {
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("unable to create Service: %v", err)
+	}
+	return nil
 }
 
 func (r *ApplicationReconciler) reconcileDelete(ctx context.Context, app *minettodevv1alpha1.Application) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
-	l.Info("remove all")
+	l.Info("removing service")
+	err := r.removeService(ctx, app)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	l.Info("removing deployment")
+	err = r.removeDeployment(ctx, app)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	l.Info("removing namespace")
 
+	controllerutil.RemoveFinalizer(app, finalizer)
+	return ctrl.Result{}, r.Update(ctx, app)
+}
+
+func (r *ApplicationReconciler) removeService(ctx context.Context, app *minettodevv1alpha1.Application) error {
+	var srv v1.Service
+	srvName := types.NamespacedName{Name: app.ObjectMeta.Name + "-service", Namespace: app.ObjectMeta.Name}
+	if err := r.Get(ctx, srvName, &srv); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("unable to fetch Service: %v", err)
+		}
+	}
+	if err := r.Delete(ctx, &srv); err != nil {
+		return fmt.Errorf("unable to delete Service: %v", err)
+	}
+	return nil
+}
+
+func (r *ApplicationReconciler) removeDeployment(ctx context.Context, app *minettodevv1alpha1.Application) error {
+	var depl appsv1.Deployment
+	deplName := types.NamespacedName{Name: app.ObjectMeta.Name + "-deployment", Namespace: app.ObjectMeta.Name}
+	if err := r.Get(ctx, deplName, &depl); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("unable to fetch Deployment: %v", err)
+		}
+	}
+	if err := r.Delete(ctx, &depl); err != nil {
+		return fmt.Errorf("unable to delete Deployment: %v", err)
+	}
+	return nil
+}
+
+func (r *ApplicationReconciler) removeNamespace(ctx context.Context, app *minettodevv1alpha1.Application) error {
 	var ns v1.Namespace
 	nsName := types.NamespacedName{Name: app.ObjectMeta.Name}
 	if err := r.Get(ctx, nsName, &ns); err != nil {
 		if !apierrors.IsNotFound(err) {
-			l.Error(err, "unable to fetch Namespace")
-			return ctrl.Result{}, err
+			return fmt.Errorf("unable to fetch Namespace: %v", err)
 		}
 	}
 	if err := r.Delete(ctx, &ns); err != nil {
-		l.Error(err, "unable to delete Namespace")
-		return ctrl.Result{}, err
+		return fmt.Errorf("unable to delete Namespace: %v", err)
 	}
-
-	controllerutil.RemoveFinalizer(app, finalizer)
-	return ctrl.Result{}, r.Update(ctx, app)
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

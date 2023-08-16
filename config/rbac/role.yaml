@@ -18,9 +18,9 @@ rules:
   - update
   - watch
 - apiGroups:
-  - apps
+  - ""
   resources:
-  - replicasets
+  - namespaces
   verbs:
   - create
   - delete
@@ -32,7 +32,7 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - namespaces
+  - services
   verbs:
   - create
   - delete
