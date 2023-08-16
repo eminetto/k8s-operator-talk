@@ -3,4 +3,5 @@ kind: Application
 metadata:
   name: application-sample
 spec:
-  # TODO(user): Add fields here
+  image: eminetto/auth:latest
+  replicas: 1

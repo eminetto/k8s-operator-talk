@@ -26,12 +26,22 @@ kubectl apply -f config/samples/
 	
 ```sh
 make docker-build docker-push IMG=<some-registry>/k8s-operator-talk:tag
+
+Usado:
+
+make docker-build docker-push IMG=registry.hub.docker.com/eminetto/k8s-operator-talk:latest
+
 ```
 	
 3. Deploy the controller to the cluster with the image specified by `IMG`:
 
 ```sh
 make deploy IMG=<some-registry>/k8s-operator-talk:tag
+
+Usado:
+
+make deploy IMG=registry.hub.docker.com/eminetto/k8s-operator-talk:latest
+
 ```
 
 ### Uninstall CRDs

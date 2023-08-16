@@ -25,10 +25,6 @@ import (
 
 // ApplicationSpec defines the desired state of Application
 type ApplicationSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	Name     string `json:"name,omitempty"`
 	Image    string `json:"image,omitempty"`
 	Replicas int32  `json:"replicas,omitempty"`
 }
