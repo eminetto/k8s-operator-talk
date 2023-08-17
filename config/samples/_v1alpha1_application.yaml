@@ -1,8 +1,14 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: application-sample
+---
 apiVersion: minetto.dev/v1alpha1
 kind: Application
 metadata:
   name: application-sample
+  namespace: application-sample
 spec:
-  image: eminetto/auth:latest
-  replicas: 1
+  image: nginx:latest
+  replicas: 2
   port: 80
