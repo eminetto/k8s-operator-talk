@@ -46,7 +46,7 @@ type ApplicationReconciler struct {
 //+kubebuilder:rbac:groups=minetto.dev,resources=applications,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=minetto.dev,resources=applications/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=minetto.dev,resources=applications/finalizers,verbs=update
-// +kubebuilder:rbac:groups=core,resources=namespaces,verbs=get;list;watch;create;update;patch;delete
+
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 
