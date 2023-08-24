@@ -207,10 +207,15 @@ func (r *ApplicationReconciler) createService(ctx context.Context, app *minettod
 
 func (r *ApplicationReconciler) reconcileDelete(ctx context.Context, app *minettodevv1alpha1.Application) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
+
 	l.Info("removing application")
 
 	controllerutil.RemoveFinalizer(app, finalizer)
-	return ctrl.Result{}, r.Update(ctx, app)
+	err := r.Update(ctx, app)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("Error removing finalizer %v", err)
+	}
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

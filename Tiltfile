@@ -7,4 +7,4 @@
 # generate the controller manifest and deploy to the cluster
 k8s_yaml(kustomize("./config/default"))
 # build and push the controller image to the local registry
-docker_build("registry.hub.docker.com/eminetto/k8s-operator-talk:latest", ".")
+docker_build("controller:latest", ".")
