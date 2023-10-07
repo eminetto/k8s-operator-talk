@@ -30,13 +30,13 @@ var _ = Describe("Application controller", func() {
 		It("Should create a Deployment and a Service", func() {
 			ctx := context.Background()
 
-			// precisamos criar uma namespace no cluster
+			// we need to create a namespace in the cluster
 			ns := corev1.Namespace{
 				ObjectMeta: v1.ObjectMeta{Name: ApplicationNamespace},
 			}
 			Expect(k8sClient.Create(ctx, &ns)).Should(Succeed())
 
-			//definimos uma Application
+			// we define an Application
 			app := minettodevv1alpha1.Application{
 				TypeMeta: v1.TypeMeta{
 					Kind:       "Application",
@@ -52,20 +52,21 @@ var _ = Describe("Application controller", func() {
 					Port:     80,
 				},
 			}
-			//adicionamos o finalizer, conforme descrito no post anterior
+			// we added the finalizer, as described in the previous post
 			controllerutil.AddFinalizer(&app, finalizer)
-			//garantimos que a criação não teve erros
+			// we guarantee that the creation was error-free
 			Expect(k8sClient.Create(ctx, &app)).Should(Succeed())
-			//garantimos que o finalizer foi criado com sucesso
+			// we guarantee that the finalizer was created successfully
 			Expect(controllerutil.ContainsFinalizer(&app, finalizer)).Should(BeTrue())
 
-			// vamos agora verificar se o deployment foi criado com sucesso
+			// let's now check if the deployment was created successfully
 			deplName := types.NamespacedName{Name: app.ObjectMeta.Name + "-deployment", Namespace: app.ObjectMeta.Name}
 			createdDepl := &appsv1.Deployment{}
 
-			//devido a natureza assíncrona do Kubernetes vamos fazer uso da função Eventually do Ginkgo
-			//ele vai executar a função de acordo com o valor do intervalo, até que o timeout tenha terminado,
-			//ou o resultado seja true
+			// due to the asynchronous nature of Kubernetes, we will
+			// make use of Ginkgo's Eventually function. It will
+			// execute the function according to the interval value,
+			// until the timeout has ended, or the result is true
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, deplName, createdDepl)
 				if err != nil {
@@ -73,12 +74,12 @@ var _ = Describe("Application controller", func() {
 				}
 				return true
 			}, timeout, interval).Should(BeTrue())
-			//vamos verificar se os dados do Deployment foram criados de acordo com o esperado
+			// let's check if the Deployment data was created as expected
 			Expect(createdDepl.Spec.Template.Spec.Containers[0].Image).Should(Equal(app.Spec.Image))
-			//o Application deve ser o Owner do Deployment
+			// the Application must be the Owner of the Deployment
 			Expect(createdDepl.ObjectMeta.OwnerReferences[0].Name).Should(Equal(app.Name))
 
-			// vamos fazer o mesmo com o Service, garantindo que o controller criou conforme o esperado
+			// let's do the same with the Service, ensuring that the controller created it as expected
 			srvName := types.NamespacedName{Name: app.ObjectMeta.Name + "-service", Namespace: app.ObjectMeta.Name}
 			createdSrv := &corev1.Service{}
 
@@ -98,7 +99,7 @@ var _ = Describe("Application controller", func() {
 		It("Should update the Deployment", func() {
 			ctx := context.Background()
 
-			//vamos primeiro buscar a Application no cluster
+			// let's first retrieve the Application in the cluster
 			appName := types.NamespacedName{Name: ApplicationName, Namespace: ApplicationNamespace}
 			app := minettodevv1alpha1.Application{}
 			Eventually(func() bool {
@@ -109,7 +110,7 @@ var _ = Describe("Application controller", func() {
 				return true
 			}, timeout, interval).Should(BeTrue())
 
-			// vamos buscar o Deployment para garantir que os dados estão iguais aos do Application
+			// let's retrieve the Deployment to ensure that the data is the same as the Application
 			deplName := types.NamespacedName{Name: app.ObjectMeta.Name + "-deployment", Namespace: app.ObjectMeta.Name}
 			createdDepl := &appsv1.Deployment{}
 
@@ -122,11 +123,11 @@ var _ = Describe("Application controller", func() {
 			}, timeout, interval).Should(BeTrue())
 			Expect(createdDepl.Spec.Template.Spec.Containers[0].Image).Should(Equal(app.Spec.Image))
 
-			//vamos alterar a Application
+			// let's change the Application
 			app.Spec.Image = "caddy:latest"
 			Expect(k8sClient.Update(ctx, &app)).Should(Succeed())
 
-			//vamos conferir se a alteração no Application se refletiu no Deployment
+			// let's check if the change in the Application was reflected in the Deployment
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, deplName, createdDepl)
 				if err != nil {
@@ -143,24 +144,24 @@ var _ = Describe("Application controller", func() {
 	Context("When deleting an Application", func() {
 		It("Should delete the Deployment and Service", func() {
 			appName := types.NamespacedName{Name: ApplicationName, Namespace: ApplicationNamespace}
-			//verifica se a exlusão aconteceu com sucesso
+			// checks whether the deletion was successful
 			Eventually(func() error {
 				a := &minettodevv1alpha1.Application{}
 				k8sClient.Get(context.Background(), appName, a)
 				return k8sClient.Delete(context.Background(), a)
 			}, timeout, interval).Should(Succeed())
 
-			//garante que o Application não existe mais no cluster
-			//este teste não é realmente necessário, pois o Delete aconteceu com sucesso
-			//mantive este teste aqui apenas para fins didáticos
+			// ensures that the Application no longer exists in the cluster
+			// this test is not really necessary as the Delete happened successfully
+			// I kept this test here for educational purposes only.
 			Eventually(func() error {
 				a := &minettodevv1alpha1.Application{}
 				return k8sClient.Get(context.Background(), appName, a)
 			}, timeout, interval).ShouldNot(Succeed())
 
-			// de acordo com esta documentação : https://book.kubebuilder.io/reference/envtest.html#testing-considerations
-			// não podemos testar o garbage collection do cluster, para garantir que o Deployment e o Service criados foram removidos
-			// mas no primeiro teste nós verificamos o ownership, então eles serão removidos de acordo com o esperado em um cluster real
+			// according to this documentation: https://book.kubebuilder.io/reference/envtest.html#testing-considerations
+			// we cannot test the cluster's garbage collection to ensure that the Deployment and Service created were removed,
+			// but in the first test we check the ownership, so they will be removed as expected in a real cluster
 		})
 	})
 })
